@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>资产配置管理器</title>
+    <meta name="theme-color" content="#1667c7" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">人民币资产组合</p>
+        <h1>资产配置管理器</h1>
+      </div>
+      <div class="top-actions">
+        <button id="syncPanelBtn" type="button">云同步</button>
+        <button id="exportBtn" type="button">导出</button>
+        <label class="file-action">
+          导入
+          <input id="importFile" type="file" accept="application/json" />
+        </label>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="summary-grid" aria-label="资产概览">
+        <article class="metric">
+          <span>总资产</span>
+          <strong id="totalAssets">¥0</strong>
+        </article>
+        <article class="metric">
+          <span>历史峰值</span>
+          <strong id="peakAssets">¥0</strong>
+        </article>
+        <article class="metric">
+          <span>当前回撤</span>
+          <strong id="drawdown">0.00%</strong>
+        </article>
+        <article class="metric">
+          <span>高收益仓</span>
+          <strong id="riskBucket">0.00%</strong>
+        </article>
+      </section>
+
+      <section id="syncPanel" class="panel sync-panel" hidden>
+        <div class="section-head">
+          <div>
+            <h2>隐私云同步</h2>
+            <p>数据会在本地加密后上传，云端只保存密文。同步密码无法找回，请自行保管。</p>
+          </div>
+          <span id="syncStatus" class="status watch">未连接</span>
+        </div>
+
+        <div class="sync-grid">
+          <form id="configForm" class="form compact-form">
+            <label class="wide">
+              Supabase URL
+              <input id="supabaseUrl" type="url" placeholder="https://xxxx.supabase.co" />
+            </label>
+            <label class="wide">
+              Supabase Anon Key
+              <input id="supabaseAnonKey" type="password" placeholder="公开 anon key" />
+            </label>
+            <button type="submit">保存配置</button>
+          </form>
+
+          <form id="authForm" class="form compact-form">
+            <label>
+              邮箱
+              <input id="syncEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+            </label>
+            <label>
+              登录密码
+              <input id="syncPassword" type="password" autocomplete="current-password" />
+            </label>
+            <label class="wide">
+              同步加密密码
+              <input id="syncSecret" type="password" autocomplete="off" placeholder="只用于本地加密，不会上传" />
+            </label>
+            <label class="checkbox-line wide">
+              <input id="rememberDevice" type="checkbox" />
+              记住本设备
+            </label>
+            <div class="form-actions">
+              <button id="signInBtn" type="button">登录</button>
+              <button id="signUpBtn" type="button">注册</button>
+              <button id="signOutBtn" type="button">退出</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="sync-actions">
+          <button id="uploadSyncBtn" type="button">加密上传</button>
+          <button id="downloadSyncBtn" type="button">下载解密</button>
+          <button id="autoSyncBtn" type="button">开启自动上传</button>
+          <button id="checkSyncBtn" type="button">检查云端更新</button>
+        </div>
+        <p id="syncMeta" class="sync-meta">尚未同步。</p>
+      </section>
+
+      <section class="panel recommendation-panel">
+        <div class="section-head">
+          <div>
+            <h2>下一步加仓建议</h2>
+            <p>输入本月可投资金额，系统按低配程度给出分配。</p>
+          </div>
+          <div class="amount-control">
+            <label for="newMoney">本月可投</label>
+            <input id="newMoney" type="number" min="0" step="100" placeholder="例如 10000" />
+          </div>
+        </div>
+        <div id="recommendation" class="recommendation"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>收益波动</h2>
+            <p>基于每次录入持仓时保存的资产快照，可查看总体或单个仓位变化。</p>
+          </div>
+          <div class="chart-controls">
+            <label for="chartMode">
+              图表范围
+              <select id="chartMode">
+                <option value="total">总资产</option>
+                <option value="all">全部仓位</option>
+              </select>
+            </label>
+            <button id="snapshotBtn" type="button">保存今日快照</button>
+          </div>
+        </div>
+        <div id="chartSummary" class="chart-summary"></div>
+        <div class="chart-wrap">
+          <svg id="performanceChart" role="img" aria-label="资产收益波动折线图"></svg>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>当前仓位</h2>
+            <p>目标比例和允许区间可在下方调整。</p>
+          </div>
+          <button id="resetTargetsBtn" type="button">恢复默认比例</button>
+        </div>
+        <div id="allocationList" class="allocation-list"></div>
+      </section>
+
+      <section class="two-column">
+        <article class="panel">
+          <div class="section-head">
+            <div>
+              <h2>录入持仓</h2>
+              <p>按产品录入金额，系统自动归类汇总。</p>
+            </div>
+          </div>
+          <form id="holdingForm" class="form">
+            <input id="holdingId" type="hidden" />
+            <label>
+              仓位类别
+              <select id="holdingCategory"></select>
+            </label>
+            <label>
+              产品名称
+              <input id="holdingName" type="text" placeholder="例如 沪深300ETF联接" required />
+            </label>
+            <label>
+              当前金额
+              <input id="holdingAmount" type="number" min="0" step="0.01" placeholder="金额" required />
+            </label>
+            <label>
+              备注
+              <input id="holdingNote" type="text" placeholder="平台、代码或说明" />
+            </label>
+            <div class="form-actions">
+              <button type="submit">保存持仓</button>
+              <button id="clearHoldingBtn" type="button">清空</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="section-head">
+            <div>
+              <h2>录入历史</h2>
+              <p>记录收入、买入、卖出、调仓和备注。</p>
+            </div>
+          </div>
+          <form id="recordForm" class="form">
+            <label>
+              日期
+              <input id="recordDate" type="date" required />
+            </label>
+            <label>
+              类型
+              <select id="recordType">
+                <option value="income">收入</option>
+                <option value="buy">买入</option>
+                <option value="sell">卖出</option>
+                <option value="rebalance">再平衡</option>
+                <option value="note">备注</option>
+              </select>
+            </label>
+            <label>
+              仓位类别
+              <select id="recordCategory"></select>
+            </label>
+            <label>
+              金额
+              <input id="recordAmount" type="number" min="0" step="0.01" placeholder="金额" required />
+            </label>
+            <label class="wide">
+              说明
+              <input id="recordNote" type="text" placeholder="例如 本月结余、补低配仓、超过上限卖出" />
+            </label>
+            <button type="submit">添加记录</button>
+          </form>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>持仓明细</h2>
+            <p>点击编辑可更新金额，删除不会影响历史记录。</p>
+          </div>
+          <button id="loadDemoBtn" type="button">载入示例</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>类别</th>
+                <th>产品</th>
+                <th>金额</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="holdingsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>历史记录</h2>
+            <p>保留每次收入、买卖和再平衡动作。</p>
+          </div>
+          <button id="clearRecordsBtn" type="button">清空历史</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>类型</th>
+                <th>类别</th>
+                <th>金额</th>
+                <th>说明</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("service-worker.js");
+        });
+      }
+    </script>
+  </body>
+</html>

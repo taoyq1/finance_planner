@@ -1,0 +1,5 @@
+portfolio-backup-*.json
+*.backup.json
+*.local.json
+.env
+.env.*

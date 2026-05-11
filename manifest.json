@@ -1,0 +1,18 @@
+{
+  "name": "资产配置管理器",
+  "short_name": "资产管理",
+  "description": "本地优先的人民币资产配置、持仓和再平衡管理工具。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#1667c7",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

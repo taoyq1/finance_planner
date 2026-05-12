@@ -42,6 +42,9 @@ let autoSyncEnabled = localStorage.getItem(AUTO_SYNC_KEY) === "true";
 let lastLocalChange = localStorage.getItem(LAST_LOCAL_CHANGE_KEY) || "";
 let lastCloudSync = localStorage.getItem(LAST_CLOUD_SYNC_KEY) || "";
 let cloudCheckTimer = 0;
+let productData = null;
+let holdingScanTimer = 0;
+let lastAlertKeys = new Set();
 
 const els = {
   totalAssets: document.querySelector("#totalAssets"),
@@ -50,6 +53,10 @@ const els = {
   riskBucket: document.querySelector("#riskBucket"),
   newMoney: document.querySelector("#newMoney"),
   recommendation: document.querySelector("#recommendation"),
+  productCategory: document.querySelector("#productCategory"),
+  refreshProductsBtn: document.querySelector("#refreshProductsBtn"),
+  productMeta: document.querySelector("#productMeta"),
+  productList: document.querySelector("#productList"),
   chartMode: document.querySelector("#chartMode"),
   snapshotBtn: document.querySelector("#snapshotBtn"),
   chartSummary: document.querySelector("#chartSummary"),
@@ -59,8 +66,12 @@ const els = {
   holdingId: document.querySelector("#holdingId"),
   holdingCategory: document.querySelector("#holdingCategory"),
   holdingName: document.querySelector("#holdingName"),
+  holdingCode: document.querySelector("#holdingCode"),
   holdingAmount: document.querySelector("#holdingAmount"),
+  holdingCost: document.querySelector("#holdingCost"),
   holdingNote: document.querySelector("#holdingNote"),
+  holdingStopLoss: document.querySelector("#holdingStopLoss"),
+  holdingTakeProfit: document.querySelector("#holdingTakeProfit"),
   clearHoldingBtn: document.querySelector("#clearHoldingBtn"),
   recordForm: document.querySelector("#recordForm"),
   recordDate: document.querySelector("#recordDate"),
@@ -75,6 +86,10 @@ const els = {
   resetTargetsBtn: document.querySelector("#resetTargetsBtn"),
   clearRecordsBtn: document.querySelector("#clearRecordsBtn"),
   loadDemoBtn: document.querySelector("#loadDemoBtn"),
+  scanHoldingsBtn: document.querySelector("#scanHoldingsBtn"),
+  notifyBtn: document.querySelector("#notifyBtn"),
+  alertMeta: document.querySelector("#alertMeta"),
+  alertList: document.querySelector("#alertList"),
   toast: document.querySelector("#toast"),
   syncPanelBtn: document.querySelector("#syncPanelBtn"),
   syncPanel: document.querySelector("#syncPanel"),
@@ -110,6 +125,8 @@ function init() {
   render();
   renderSyncStatus();
   startCloudChecks();
+  loadProductData();
+  startHoldingScans();
 }
 
 function loadState() {
@@ -201,6 +218,7 @@ function renderCategoryOptions() {
     .join("");
   els.holdingCategory.innerHTML = options;
   els.recordCategory.innerHTML = `<option value="">不适用</option>${options}`;
+  els.productCategory.innerHTML = `<option value="all">全部仓位</option>${options}`;
   els.chartMode.innerHTML = `
     <option value="total">总资产</option>
     <option value="all">全部仓位</option>
@@ -227,6 +245,10 @@ function bindEvents() {
   els.resetTargetsBtn.addEventListener("click", resetTargets);
   els.clearRecordsBtn.addEventListener("click", clearRecords);
   els.loadDemoBtn.addEventListener("click", loadDemo);
+  els.scanHoldingsBtn.addEventListener("click", () => scanHoldings({ notify: true, manual: true }));
+  els.notifyBtn.addEventListener("click", requestNotifications);
+  els.productCategory.addEventListener("change", renderProducts);
+  els.refreshProductsBtn.addEventListener("click", loadProductData);
   els.syncPanelBtn.addEventListener("click", () => {
     els.syncPanel.hidden = !els.syncPanel.hidden;
   });
@@ -247,7 +269,11 @@ function saveHolding(event) {
     id,
     categoryId: els.holdingCategory.value,
     name: els.holdingName.value.trim(),
+    code: normalizeCode(els.holdingCode.value),
     amount: Number(els.holdingAmount.value) || 0,
+    cost: Number(els.holdingCost.value) || 0,
+    stopLossPct: Number(els.holdingStopLoss.value) || null,
+    takeProfitPct: Number(els.holdingTakeProfit.value) || null,
     note: els.holdingNote.value.trim(),
   };
 
@@ -293,7 +319,11 @@ function editHolding(id) {
   els.holdingId.value = holding.id;
   els.holdingCategory.value = holding.categoryId;
   els.holdingName.value = holding.name;
+  els.holdingCode.value = holding.code || "";
   els.holdingAmount.value = holding.amount;
+  els.holdingCost.value = holding.cost || "";
+  els.holdingStopLoss.value = holding.stopLossPct || "";
+  els.holdingTakeProfit.value = holding.takeProfitPct || "";
   els.holdingNote.value = holding.note;
   window.scrollTo({ top: els.holdingForm.getBoundingClientRect().top + window.scrollY - 80 });
 }
@@ -328,12 +358,12 @@ function resetTargets() {
 
 function loadDemo() {
   state.holdings = [
-    { id: createId(), categoryId: "cash", name: "货币基金/活期", amount: 100000, note: "应急资金" },
-    { id: createId(), categoryId: "bond", name: "中短债基金", amount: 210000, note: "稳定底仓" },
-    { id: createId(), categoryId: "dividend", name: "红利低波指数", amount: 180000, note: "股息资产" },
-    { id: createId(), categoryId: "broad", name: "沪深300/中证A500", amount: 230000, note: "宽基定投" },
-    { id: createId(), categoryId: "gold", name: "黄金ETF", amount: 90000, note: "对冲资产" },
-    { id: createId(), categoryId: "growth", name: "科技/港股主题", amount: 140000, note: "高收益仓" },
+    { id: createId(), categoryId: "cash", code: "511990", name: "华宝添益ETF", amount: 100000, cost: 99000, note: "应急资金" },
+    { id: createId(), categoryId: "bond", code: "511010", name: "国债ETF", amount: 210000, cost: 212000, note: "稳定底仓" },
+    { id: createId(), categoryId: "dividend", code: "510880", name: "红利ETF", amount: 180000, cost: 165000, note: "股息资产" },
+    { id: createId(), categoryId: "broad", code: "510300", name: "沪深300ETF", amount: 230000, cost: 205000, note: "宽基定投" },
+    { id: createId(), categoryId: "gold", code: "518880", name: "黄金ETF", amount: 90000, cost: 72000, note: "对冲资产" },
+    { id: createId(), categoryId: "growth", code: "512480", name: "半导体ETF", amount: 140000, cost: 90000, takeProfitPct: 35, note: "高收益仓" },
   ];
   state.records = [
     {
@@ -369,6 +399,7 @@ function render() {
   renderAllocations(snapshot);
   renderHoldings();
   renderRecords();
+  scanHoldings({ notify: false });
 }
 
 function captureSnapshot(date) {
@@ -421,6 +452,215 @@ function renderRecommendation() {
     : `<div class="empty">当前仓位没有明显低配。新增资金可暂放现金，等月底再检查。</div>`;
 
   els.recommendation.innerHTML = `${riskWarning}${adviceHtml}`;
+}
+
+async function loadProductData() {
+  try {
+    els.productMeta.textContent = "正在加载产品数据...";
+    const response = await fetch(`data/products.json?v=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("未找到 data/products.json");
+    }
+    productData = await response.json();
+    renderProducts();
+    scanHoldings({ notify: false });
+  } catch (error) {
+    productData = null;
+    els.productMeta.textContent = "产品数据未加载。部署后由 GitHub Actions 每周生成 data/products.json。";
+    els.productList.innerHTML = `<div class="empty">${escapeHtml(error.message || "加载失败")}</div>`;
+  }
+}
+
+function renderProducts() {
+  if (!productData?.products?.length) {
+    els.productMeta.textContent = "尚无产品数据。";
+    els.productList.innerHTML = `<div class="empty">请先等待自动更新任务生成产品数据。</div>`;
+    return;
+  }
+
+  const categoryId = els.productCategory.value;
+  const products = productData.products
+    .filter((item) => categoryId === "all" || item.categoryId === categoryId)
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  const updatedAt = productData.updatedAt ? new Date(productData.updatedAt).toLocaleString("zh-CN") : "未知";
+  els.productMeta.textContent = `更新时间：${updatedAt} · 数据源：${productData.source || "公开基金数据"} · 评分仅用于同类比较`;
+
+  if (!products.length) {
+    els.productList.innerHTML = `<div class="empty">当前仓位还没有候选产品。</div>`;
+    return;
+  }
+
+  els.productList.innerHTML = products
+    .map((product) => {
+      const metrics = product.metrics || {};
+      return `
+        <article class="product-card">
+          <div class="product-title">
+            <strong>${escapeHtml(product.name)}</strong>
+            <span>${escapeHtml(product.code)} · ${categoryName(product.categoryId)}</span>
+          </div>
+          <div class="product-stat"><span>近1月</span><strong>${formatMaybePct(metrics.return1m)}</strong></div>
+          <div class="product-stat"><span>近3月</span><strong>${formatMaybePct(metrics.return3m)}</strong></div>
+          <div class="product-stat"><span>近1年</span><strong>${formatMaybePct(metrics.return1y)}</strong></div>
+          <div class="product-stat"><span>最大回撤</span><strong>${formatMaybePct(metrics.maxDrawdown1y)}</strong></div>
+          <div class="product-stat"><span>年化波动</span><strong>${formatMaybePct(metrics.volatility1y)}</strong></div>
+          <div class="score-badge">${Math.round(product.score || 0)}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function startHoldingScans() {
+  if (holdingScanTimer) {
+    window.clearInterval(holdingScanTimer);
+  }
+  holdingScanTimer = window.setInterval(() => {
+    scanHoldings({ notify: true });
+  }, 5 * 60 * 1000);
+}
+
+function scanHoldings(options = {}) {
+  const alerts = buildHoldingAlerts();
+  renderHoldingAlerts(alerts);
+  if (options.notify) {
+    notifyNewAlerts(alerts);
+  }
+  if (options.manual) {
+    showToast(alerts.length ? `发现 ${alerts.length} 条持仓提醒` : "当前没有触发减仓/退出提醒");
+  }
+  return alerts;
+}
+
+function buildHoldingAlerts() {
+  const snapshot = getSnapshot();
+  const productMap = getProductMap();
+  const alerts = [];
+
+  state.holdings.forEach((holding) => {
+    const amount = Number(holding.amount) || 0;
+    const cost = Number(holding.cost) || 0;
+    const profitPct = cost ? ((amount - cost) / cost) * 100 : null;
+    const product = holding.code ? productMap.get(normalizeCode(holding.code)) : null;
+    const metrics = product?.metrics || {};
+    const stopLoss = Number(holding.stopLossPct) || defaultStopLoss(holding.categoryId);
+    const takeProfit = Number(holding.takeProfitPct) || defaultTakeProfit(holding.categoryId);
+
+    if (profitPct !== null && profitPct <= stopLoss) {
+      alerts.push(makeAlert("danger", holding, "触发止损提醒", `当前收益 ${formatPct(profitPct)}%，低于 ${stopLoss}% 阈值。`, "建议暂停加仓，复盘是否减仓或退出。"));
+    }
+
+    if (profitPct !== null && profitPct >= takeProfit) {
+      alerts.push(makeAlert("warning", holding, "触发止盈提醒", `当前收益 +${formatPct(profitPct)}%，高于 ${takeProfit}% 阈值。`, "建议至少卖出一部分，把仓位拉回目标比例。"));
+    }
+
+    if (holding.categoryId === "growth" && amount / (snapshot.total || 1) > 0.05) {
+      alerts.push(makeAlert("warning", holding, "单一高收益产品偏重", `该产品占总资产 ${formatPct((amount / snapshot.total) * 100)}%。`, "高收益单品建议控制在总资产 3%-5%。"));
+    }
+
+    if (product?.score !== undefined && product.score < 45) {
+      alerts.push(makeAlert("warning", holding, "产品评分偏低", `候选池评分 ${Math.round(product.score)}，同类相对较弱。`, "建议和同类高评分产品比较，必要时调出候选池。"));
+    }
+
+    if (Number(metrics.return1m) <= -8 || Number(metrics.return3m) <= -15) {
+      alerts.push(makeAlert("danger", holding, "短期趋势恶化", `近1月 ${formatMaybePct(metrics.return1m)}，近3月 ${formatMaybePct(metrics.return3m)}。`, "建议复盘下跌原因，避免继续扩大高风险敞口。"));
+    }
+
+    if (Number(metrics.maxDrawdown1y) <= -30 && holding.categoryId === "growth") {
+      alerts.push(makeAlert("warning", holding, "一年回撤过深", `产品近一年最大回撤 ${formatMaybePct(metrics.maxDrawdown1y)}。`, "高波动产品建议只保留小仓位，避免影响整体 15% 回撤目标。"));
+    }
+  });
+
+  const byKey = new Map();
+  alerts.forEach((alert) => byKey.set(alert.key, alert));
+  return [...byKey.values()].sort((a, b) => severityRank(b.level) - severityRank(a.level));
+}
+
+function renderHoldingAlerts(alerts) {
+  const time = new Date().toLocaleString("zh-CN");
+  els.alertMeta.textContent = `最近扫描：${time} · ${alerts.length ? `${alerts.length} 条提醒` : "无触发项"}`;
+
+  if (!alerts.length) {
+    els.alertList.innerHTML = `<div class="empty">当前没有触发止盈、止损或减仓提醒。</div>`;
+    return;
+  }
+
+  els.alertList.innerHTML = alerts
+    .map(
+      (alert) => `
+      <article class="alert-card ${alert.level}">
+        <div class="alert-title">
+          <strong>${escapeHtml(alert.title)}</strong>
+          <span>${escapeHtml(alert.name)}${alert.code ? ` · ${escapeHtml(alert.code)}` : ""}</span>
+        </div>
+        <div class="alert-detail">${escapeHtml(alert.detail)}</div>
+        <div class="alert-action">${escapeHtml(alert.action)}</div>
+      </article>
+    `,
+    )
+    .join("");
+}
+
+function notifyNewAlerts(alerts) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  alerts.forEach((alert) => {
+    if (lastAlertKeys.has(alert.key)) return;
+    lastAlertKeys.add(alert.key);
+    new Notification("资产持仓提醒", {
+      body: `${alert.name}: ${alert.title}`,
+      icon: "icon.svg",
+    });
+  });
+}
+
+function requestNotifications() {
+  if (!("Notification" in window)) {
+    showToast("当前浏览器不支持通知");
+    return;
+  }
+  Notification.requestPermission().then((permission) => {
+    showToast(permission === "granted" ? "通知已开启" : "通知未开启");
+  });
+}
+
+function makeAlert(level, holding, title, detail, action) {
+  return {
+    key: `${holding.id}-${title}`,
+    level,
+    title,
+    detail,
+    action,
+    name: holding.name,
+    code: holding.code || "",
+  };
+}
+
+function getProductMap() {
+  const map = new Map();
+  (productData?.products || []).forEach((product) => {
+    map.set(normalizeCode(product.code), product);
+  });
+  return map;
+}
+
+function defaultStopLoss(categoryId) {
+  if (categoryId === "cash") return -1;
+  if (categoryId === "bond") return -5;
+  if (categoryId === "growth") return -15;
+  return -12;
+}
+
+function defaultTakeProfit(categoryId) {
+  if (categoryId === "cash") return 5;
+  if (categoryId === "bond") return 8;
+  if (categoryId === "growth") return 35;
+  if (categoryId === "gold") return 30;
+  return 25;
+}
+
+function severityRank(level) {
+  return { info: 1, warning: 2, danger: 3 }[level] || 0;
 }
 
 function renderChart() {
@@ -595,7 +835,7 @@ function renderAllocations(snapshot) {
 
 function renderHoldings() {
   if (!state.holdings.length) {
-    els.holdingsTable.innerHTML = `<tr><td colspan="5" class="empty">还没有持仓。先在上方录入一条。</td></tr>`;
+    els.holdingsTable.innerHTML = `<tr><td colspan="8" class="empty">还没有持仓。先在上方录入一条。</td></tr>`;
     return;
   }
 
@@ -604,8 +844,11 @@ function renderHoldings() {
       (holding) => `
       <tr>
         <td><span class="tag">${categoryName(holding.categoryId)}</span></td>
+        <td>${escapeHtml(holding.code || "-")}</td>
         <td>${escapeHtml(holding.name)}</td>
+        <td>${holding.cost ? money(holding.cost) : "-"}</td>
         <td>${money(holding.amount)}</td>
+        <td>${formatHoldingProfit(holding)}</td>
         <td>${escapeHtml(holding.note || "")}</td>
         <td>
           <div class="row-actions">
@@ -1147,6 +1390,22 @@ function categoryName(id) {
   return state.categories.find((category) => category.id === id)?.name || "未分类";
 }
 
+function normalizeCode(value) {
+  return String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 6);
+}
+
+function formatHoldingProfit(holding) {
+  const amount = Number(holding.amount) || 0;
+  const cost = Number(holding.cost) || 0;
+  if (!cost) return "-";
+  const profit = amount - cost;
+  const pct = (profit / cost) * 100;
+  const className = profit >= 0 ? "success" : "danger";
+  return `<span class="status ${className}">${profit >= 0 ? "+" : ""}${money(profit)} · ${profit >= 0 ? "+" : ""}${formatPct(pct)}%</span>`;
+}
+
 function createId() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -1167,6 +1426,14 @@ function compactMoney(value) {
   if (numeric >= 100000000) return `${(numeric / 100000000).toFixed(1)}亿`;
   if (numeric >= 10000) return `${(numeric / 10000).toFixed(1)}万`;
   return `${Math.round(numeric)}`;
+}
+
+function formatMaybePct(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "-";
+  }
+  const numeric = Number(value);
+  return `${numeric > 0 ? "+" : ""}${numeric.toFixed(2)}%`;
 }
 
 function formatPct(value) {

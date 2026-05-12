@@ -216,6 +216,117 @@ select:focus {
   gap: 10px;
 }
 
+.product-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.product-controls label {
+  min-width: 150px;
+}
+
+.product-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.alert-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.alert-card {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.8fr) minmax(220px, 1.5fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.alert-card.warning {
+  border-color: #fedf89;
+  background: #fffbeb;
+}
+
+.alert-card.danger {
+  border-color: #fecdca;
+  background: #fff5f5;
+}
+
+.alert-card.info {
+  background: #f8fbff;
+}
+
+.alert-title {
+  display: grid;
+  gap: 4px;
+}
+
+.alert-title strong {
+  font-size: 15px;
+}
+
+.alert-title span,
+.alert-detail {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.alert-action {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.product-card {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) repeat(5, minmax(78px, 0.7fr)) minmax(120px, 0.8fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.product-title {
+  display: grid;
+  gap: 4px;
+}
+
+.product-title strong {
+  font-size: 15px;
+}
+
+.product-title span,
+.product-stat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.product-stat {
+  display: grid;
+  gap: 3px;
+}
+
+.product-stat strong {
+  font-size: 14px;
+}
+
+.score-badge {
+  justify-self: end;
+  border-radius: 8px;
+  background: var(--soft-blue);
+  color: var(--primary-dark);
+  font-size: 18px;
+  font-weight: 800;
+  padding: 8px 10px;
+}
+
 .sync-panel[hidden] {
   display: none;
 }
@@ -439,7 +550,7 @@ select:focus {
 
 table {
   width: 100%;
-  min-width: 720px;
+  min-width: 920px;
   border-collapse: collapse;
 }
 
@@ -479,6 +590,11 @@ td {
 }
 
 .status.ok {
+  background: var(--soft-green);
+  color: var(--success);
+}
+
+.status.success {
   background: var(--soft-green);
   color: var(--success);
 }
@@ -541,8 +657,15 @@ td {
     grid-template-columns: 1fr;
   }
 
-  .allocation-row {
+  .allocation-row,
+  .product-card,
+  .alert-card {
     grid-template-columns: 1fr;
+  }
+
+  .score-badge {
+    justify-self: stretch;
+    text-align: center;
   }
 }
 
@@ -559,7 +682,8 @@ td {
 
   .top-actions,
   .form-actions,
-  .chart-controls {
+  .chart-controls,
+  .product-controls {
     display: grid;
     grid-template-columns: 1fr;
   }

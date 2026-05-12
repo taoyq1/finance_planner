@@ -1,0 +1,43 @@
+name: Update product data
+
+on:
+  schedule:
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "update refreshes candidate scores; scan refreshes ETF universe and candidates first"
+        required: true
+        default: "update"
+        type: choice
+        options:
+          - update
+          - scan
+
+permissions:
+  contents: write
+
+jobs:
+  update-products:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install scan dependencies
+        if: ${{ github.event.inputs.mode == 'scan' }}
+        run: python -m pip install --upgrade akshare pandas
+
+      - name: Update product data
+        run: python scripts/update_products.py --mode "${{ github.event.inputs.mode || 'update' }}"
+
+      - name: Commit updated data
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update product data"
+          file_pattern: data/products.json data/products_candidates.json data/products_universe.json
